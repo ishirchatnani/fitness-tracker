@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Weight Tracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#F3F5F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1210" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Weight">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one narrow column. Latest weight on top, today's log, trend chart, 7-day consistency grid, history. */
+:root{
+  --bg:#F3F5F2;
+  --surface:#FFFFFF;
+  --ink:#131715;
+  --muted:#667069;
+  --line:#E1E6E1;
+  --line-strong:#C5CDC7;
+  --accent:#17795A;
+  --accent-ink:#FFFFFF;
+  --soft:#E6F0EB;
+  --body:'Geist',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1210;--surface:#161B18;--ink:#EAF0EC;--muted:#8C968F;--line:#242B27;--line-strong:#3A443E;
+    --accent:#4CC49A;--accent-ink:#06150F;--soft:#1B2A24;color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1210;--surface:#161B18;--ink:#EAF0EC;--muted:#8C968F;--line:#242B27;--line-strong:#3A443E;
+  --accent:#4CC49A;--accent-ink:#06150F;--soft:#1B2A24;color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{
+  background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.4;
+  padding:calc(18px + env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+}
+main{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+.eyebrow{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
+h1,h2{margin:0;text-wrap:balance}
+h2{font-size:15px;font-weight:600}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+
+/* banner */
+.banner{display:none;font-size:13px;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.banner.show{display:block}
+
+/* hero */
+.hero{display:flex;flex-direction:column;gap:10px;padding-top:4px}
+.hero-top{display:flex;align-items:baseline;justify-content:space-between}
+.hero-title{font-size:15px;font-weight:600}
+.big{display:flex;align-items:baseline;gap:8px}
+.big .v{font-family:var(--mono);font-size:60px;line-height:1;font-weight:600;letter-spacing:-.03em}
+.big .u{font-size:18px;color:var(--muted)}
+.stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-align:left;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .l{font-size:12px;color:var(--muted)}
+.stat .n{font-family:var(--mono);font-size:17px;font-weight:600;white-space:nowrap}
+button.stat:hover{border-color:var(--line-strong)}
+.bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
+.barcap{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.plan{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.plan[hidden]{display:none}
+.plan .days{font-family:var(--mono);font-size:28px;font-weight:600;line-height:1;white-space:nowrap}
+.plan .days small{font-family:var(--body);font-size:13px;font-weight:400;color:var(--muted);margin-left:6px}
+.plan .side{text-align:right;font-size:12px;color:var(--muted);line-height:1.45}
+.plan .side b{display:block;font-family:var(--mono);font-size:14px;color:var(--ink);font-weight:600}
+
+/* week strip */
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.day{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 7px;border-radius:12px;border:1px solid var(--line);background:var(--surface);min-height:58px}
+.day .w{font-size:11px;color:var(--muted)}
+.day .d{font-family:var(--mono);font-size:15px;font-weight:600}
+.day .dot{width:5px;height:5px;border-radius:50%;background:transparent}
+.day.has .dot{background:var(--accent)}
+.day.today .d{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:2px;text-decoration-color:var(--accent)}
+.day[aria-pressed="true"]{background:var(--ink);border-color:var(--ink)}
+.day[aria-pressed="true"] .w{color:var(--surface);opacity:.7}
+.day[aria-pressed="true"] .d{color:var(--surface)}
+.day[aria-pressed="true"].has .dot{background:var(--accent)}
+
+/* log card */
+.log{display:flex;flex-direction:column;gap:16px}
+.winput{display:flex;align-items:center;gap:8px}
+.step{width:48px;height:56px;border-radius:12px;border:1px solid var(--line-strong);background:transparent;font-family:var(--mono);font-size:20px;font-weight:600}
+.step:active{background:var(--soft)}
+.wfield{flex:1;display:flex;align-items:baseline;justify-content:center;gap:6px;border-bottom:2px solid var(--line-strong);padding:0 4px 4px;min-width:0}
+.wfield:focus-within{border-color:var(--accent)}
+.wfield input{width:100%;min-width:0;border:0;background:transparent;color:var(--ink);font-family:var(--mono);font-size:40px;font-weight:600;text-align:right;padding:0;outline:none}
+.wfield input::placeholder{color:var(--line-strong)}
+.wfield span{font-size:16px;color:var(--muted)}
+.habit{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:14px;border-top:1px solid var(--line)}
+.habit b{font-weight:600}
+.habit small{display:block;color:var(--muted);font-size:12px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:12px;background:var(--bg);border:1px solid var(--line);width:150px;flex:none}
+.seg button{height:40px;border:0;border-radius:9px;background:transparent;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"].yes{background:var(--accent);color:var(--accent-ink)}
+.seg button[aria-pressed="true"].no{background:var(--ink);color:var(--surface)}
+.foot{display:flex;align-items:center;justify-content:space-between;min-height:24px;font-size:13px;color:var(--muted)}
+.foot .err{color:#B3261E}
+:root[data-theme="dark"] .foot .err{color:#FF8A80}
+.link{background:none;border:0;padding:4px 0;color:var(--muted);font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.link[hidden]{display:none}
+
+/* chart */
+.chips{display:flex;gap:4px}
+.chip{height:28px;padding:0 10px;border-radius:99px;border:1px solid var(--line);background:transparent;font-size:12px;font-weight:500;color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+svg.chart{width:100%;height:auto;display:block;margin-top:10px}
+.chart text{font-family:var(--mono);font-size:10px;fill:var(--muted)}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .goal{stroke:var(--accent);stroke-width:1;stroke-dasharray:4 4;opacity:.7}
+.chart .raw{fill:var(--line-strong)}
+.chart .avg{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.chart .area{fill:var(--accent);opacity:.1}
+.chart .end{fill:var(--accent);stroke:var(--surface);stroke-width:2}
+.empty{color:var(--muted);font-size:13px;padding:22px 0 8px;text-align:center}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+
+/* consistency grid */
+.grid7{display:grid;grid-template-columns:88px repeat(7,1fr) 34px;align-items:center;row-gap:10px;column-gap:4px;margin-top:12px}
+.grid7 .h{font-size:11px;color:var(--muted);text-align:center}
+.grid7 .name{font-size:14px;font-weight:500}
+.grid7 .cnt{font-family:var(--mono);font-size:13px;text-align:right;font-weight:600}
+.pip{justify-self:center;width:16px;height:16px;border-radius:50%}
+.pip.yes{background:var(--accent)}
+.pip.no{background:var(--line-strong)}
+.pip.none{border:1.5px dashed var(--line-strong)}
+
+/* history */
+.hist{display:flex;flex-direction:column;margin-top:6px}
+.hrow{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:11px 0;min-height:44px}
+.hrow:first-child{border-top:0}
+.hrow .dt{font-size:14px}
+.hrow .wt{font-family:var(--mono);font-weight:600;font-size:14px}
+.tags{display:flex;gap:4px}
+.tag{width:22px;height:22px;border-radius:6px;font-family:var(--mono);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.tag.yes{background:var(--accent);color:var(--accent-ink)}
+.tag.no{background:var(--line);color:var(--muted)}
+.tag.none{border:1.5px dashed var(--line-strong);color:var(--line-strong)}
+
+/* goal sheet */
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.sheet[hidden]{display:none}
+.sheet-body{width:100%;max-width:480px;background:var(--surface);border-radius:20px 20px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
+.sheet-body input{height:56px;border-radius:12px;border:1px solid var(--line-strong);background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:26px;font-weight:600;padding:0 14px}
+.sheet-body label{font-size:12px;color:var(--muted);margin-bottom:-8px}
+.sheet-body input[type="date"]{font-size:18px;width:100%;min-width:0}
+.sheet-body .err{font-size:13px;color:#D64545;margin:0;min-height:0}
+.btns{display:flex;gap:8px}
+.btn{flex:1;height:48px;border-radius:12px;border:1px solid var(--line-strong);background:transparent;font-weight:600}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.gate{position:fixed;inset:0;background:var(--bg);z-index:20;display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto}
+.gate[hidden]{display:none}
+.gate-body{width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px}
+.gate-body h1{font-size:26px;font-weight:600;margin-bottom:4px}
+.gate-body p{margin:0;color:var(--muted)}
+.gate-body label{font-size:12px;color:var(--muted);margin-bottom:-6px}
+.gate-body input{height:52px;border-radius:12px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font:inherit;font-size:16px;padding:0 14px}
+.gate-body .err{font-size:13px;color:#D64545;min-height:0}
+.gate-body code{font-family:var(--mono);font-size:12px;background:var(--soft);padding:1px 5px;border-radius:5px}
+.gate-body ol{margin:0;padding-left:20px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+.btn:disabled{opacity:.5}
+.foot2{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)}
+.foot2 span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (prefers-reduced-motion: reduce){.bar>i{transition:none}}
+</style>
+</head>
+<body>
+<main>
+  <div id="banner" class="banner" role="status"></div>
+
+  <section class="hero" aria-label="Summary">
+    <div class="hero-top">
+      <span class="hero-title">Weight Tracker</span>
+      <span class="eyebrow" id="latestLabel"></span>
+    </div>
+    <div class="big"><span class="v" id="bigV">—</span><span class="u">kg</span></div>
+    <div class="stats3">
+      <div class="stat"><span class="l">Since start</span><span class="n" id="sStart">—</span></div>
+      <div class="stat"><span class="l">Last 7 days</span><span class="n" id="s7">—</span></div>
+      <button class="stat" id="goalBtn" type="button"><span class="l" id="goalL">Goal</span><span class="n" id="goalN">Set</span></button>
+    </div>
+    <div id="goalBar" hidden>
+      <div class="bar" role="progressbar" aria-label="Progress to goal" aria-valuemin="0" aria-valuemax="100"><i id="goalFill" style="width:0%"></i></div>
+      <div class="barcap"><span id="capStart"></span><span id="capGoal"></span></div>
+    </div>
+    <div class="plan" id="goalPlan" hidden></div>
+  </section>
+
+  <nav class="week" id="week" aria-label="Pick a day"></nav>
+
+  <section class="card log" aria-label="Daily log">
+    <div class="row">
+      <h2 id="dayTitle">Today</h2>
+      <span class="eyebrow">Morning weight</span>
+    </div>
+    <div class="winput">
+      <button class="step" id="wMinus" type="button" aria-label="Decrease by 0.1 kg">−</button>
+      <label class="wfield" for="w"><input id="w" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" aria-label="Weight in kilograms"><span>kg</span></label>
+      <button class="step" id="wPlus" type="button" aria-label="Increase by 0.1 kg">+</button>
+    </div>
+    <div class="habit" data-h="gym">
+      <div><b>Gym</b><small>Went to the gym</small></div>
+      <div class="seg" role="group" aria-label="Gym"><button type="button" class="yes" data-v="1" aria-pressed="false">Yes</button><button type="button" class="no" data-v="0" aria-pressed="false">No</button></div>
+    </div>
+    <div class="habit" data-h="cardio">
+      <div><b>Cardio</b><small>Did cardio</small></div>
+      <div class="seg" role="group" aria-label="Cardio"><button type="button" class="yes" data-v="1" aria-pressed="false">Yes</button><button type="button" class="no" data-v="0" aria-pressed="false">No</button></div>
+    </div>
+    <div class="habit" data-h="deficit">
+      <div><b>Calorie deficit</b><small>Stayed in a deficit</small></div>
+      <div class="seg" role="group" aria-label="Calorie deficit"><button type="button" class="yes" data-v="1" aria-pressed="false">Yes</button><button type="button" class="no" data-v="0" aria-pressed="false">No</button></div>
+    </div>
+    <div class="foot">
+      <span id="status" role="status"></span>
+      <button class="link" id="clearBtn" type="button" hidden>Clear this day</button>
+    </div>
+  </section>
+
+  <section class="card" aria-label="Weight trend">
+    <div class="row">
+      <h2>Trend</h2>
+      <div class="chips" id="chips">
+        <button class="chip" type="button" data-r="30" aria-pressed="true">30D</button>
+        <button class="chip" type="button" data-r="90" aria-pressed="false">90D</button>
+        <button class="chip" type="button" data-r="0" aria-pressed="false">All</button>
+      </div>
+    </div>
+    <div id="chartWrap"></div>
+  </section>
+
+  <section class="card" aria-label="Consistency">
+    <div class="row">
+      <h2>Last 7 days</h2>
+      <span class="eyebrow" id="streak"></span>
+    </div>
+    <div class="grid7" id="grid7"></div>
+  </section>
+
+  <section class="card" aria-label="History">
+    <h2>History</h2>
+    <div class="hist" id="hist"></div>
+  </section>
+  <footer class="foot2"><span id="who"></span><button class="link" id="signOut" type="button">Sign out</button></footer>
+</main>
+
+<div class="gate" id="setup" hidden>
+  <div class="gate-body">
+    <h1>Connect your database</h1>
+    <p>This app needs your Supabase project before it can save anything.</p>
+    <ol>
+      <li>Run <code>supabase/schema.sql</code> in the Supabase SQL editor.</li>
+      <li>Create your user under Authentication.</li>
+      <li>Paste the project URL and anon key into <code>config.js</code>.</li>
+    </ol>
+  </div>
+</div>
+<div class="gate" id="auth" hidden>
+  <form class="gate-body" id="authForm">
+    <h1>Weight Tracker</h1>
+    <p>Sign in to see your log.</p>
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="username" required>
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" required>
+    <p class="err" id="authErr" role="alert"></p>
+    <button class="btn primary" id="authBtn" type="submit">Sign in</button>
+  </form>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-body" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <h2 id="sheetTitle">Your goal</h2>
+    <label for="goalIn">Target weight (kg)</label>
+    <input id="goalIn" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 72.0">
+    <label for="goalDate">Achieve it by</label>
+    <input id="goalDate" type="date">
+    <p class="err" id="goalErr" role="alert"></p>
+    <div class="btns">
+      <button class="btn" id="goalCancel" type="button">Cancel</button>
+      <button class="btn primary" id="goalSave" type="button">Save goal</button>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+  var HK=['gym','cardio','deficit'];
+  var LETTER={gym:'G',cardio:'C',deficit:'D'};
+  var NAME={gym:'Gym',cardio:'Cardio',deficit:'Calorie deficit'};
+  var LS_E='wt_entries_v1', LS_G='wt_goal_v1', LS_D='wt_goaldate_v1';
+
+  var entries={}, goal=null, goalDate=null, sel=todayKey(), range=30;
+  var store=null, mode='loading';
+  var dirty={}, ver={}, timers={}, clearArmed=false;
+
+  function $(s){return document.querySelector(s)}
+  function pad(n){return (n<10?'0':'')+n}
+  function keyOf(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+  function fromKey(k){var p=k.split('-').map(Number);return new Date(p[0],p[1]-1,p[2])}
+  function addDays(k,n){var d=fromKey(k);d.setDate(d.getDate()+n);return keyOf(d)}
+  function todayKey(){return keyOf(new Date())}
+  function fmt(v){return v.toFixed(1)}
+  function signed(v){var a=Math.abs(v);if(a<0.05)return '0.0';return (v>0?'+':'−')+a.toFixed(1)}
+  function dlabel(k,long){
+    return fromKey(k).toLocaleDateString('en-IN',long?{weekday:'short',day:'numeric',month:'short'}:{day:'numeric',month:'short'});
+  }
+  function getEntry(k){return entries[k]||{date:k,weight:null,gym:null,cardio:null,deficit:null}}
+  function isEmpty(e){return !e||(e.weight==null&&HK.every(function(h){return e[h]==null}))}
+  function weightList(){
+    return Object.keys(entries).filter(function(k){return entries[k].weight!=null}).sort()
+      .map(function(k){return {k:k,w:entries[k].weight}});
+  }
+
+  /* ---------- storage (Supabase) ---------- */
+  var sb=null, uid=null, userEmail='';
+
+  function setStatus(t,err){var s=$('#status');s.textContent=t||'';s.className=err?'err':''}
+  function banner(t){var b=$('#banner');b.textContent=t||'';b.classList.toggle('show',!!t)}
+
+  function cfgOk(){
+    var c=window.WT_CONFIG;
+    return !!(c&&c.SUPABASE_URL&&c.SUPABASE_ANON_KEY&&!/YOUR_/.test(c.SUPABASE_URL+c.SUPABASE_ANON_KEY));
+  }
+
+  /* Local cache: instant first paint, and keeps unsynced edits across reloads and offline use. */
+  function ckey(){return 'wt_cache_v1_'+uid}
+  function loadCache(){
+    try{
+      var c=JSON.parse(localStorage.getItem(ckey())||'null');
+      if(c){entries=c.entries||{};goal=c.goal==null?null:c.goal;goalDate=c.goalDate||null;dirty=c.dirty||{}}
+    }catch(x){}
+  }
+  function saveCache(){
+    try{localStorage.setItem(ckey(),JSON.stringify({entries:entries,goal:goal,goalDate:goalDate,dirty:dirty}))}catch(x){}
+  }
+
+  function pullAll(){
+    if(!sb||!uid)return Promise.resolve();
+    var all=[];
+    function page(from){
+      return sb.from('wt_entries').select('date,weight,gym,cardio,deficit').order('date',{ascending:true}).range(from,from+999)
+        .then(function(r){
+          if(r.error)throw r.error;
+          var rows=r.data||[];all=all.concat(rows);
+          if(rows.length===1000)return page(from+1000);
+        });
+    }
+    return page(0).then(function(){
+      return sb.from('wt_settings').select('goal,goal_date').maybeSingle();
+    }).then(function(r){
+      if(r.error)throw r.error;
+      var next={};
+      all.forEach(function(d){
+        next[d.date]={date:d.date,weight:d.weight==null?null:Number(d.weight),
+          gym:d.gym==null?null:d.gym,cardio:d.cardio==null?null:d.cardio,deficit:d.deficit==null?null:d.deficit};
+      });
+      Object.keys(dirty).forEach(function(k){
+        if(k==='__goal')return;
+        if(entries[k])next[k]=entries[k];else delete next[k];
+      });
+      entries=next;
+      if(!dirty.__goal){
+        goal=(r.data&&r.data.goal!=null)?Number(r.data.goal):null;
+        goalDate=(r.data&&r.data.goal_date)||null;
+      }
+      saveCache();banner('');render(true);
+    }).catch(function(){
+      banner('Cannot reach the server. Showing saved data; changes sync when you are back online.');
+    });
+  }
+
+  function persist(k){
+    if(!sb||!uid)return Promise.resolve();
+    var v=ver[k]||0,e=entries[k],p;
+    if(isEmpty(e)){
+      p=sb.from('wt_entries').delete().eq('date',k);
+    }else{
+      p=sb.from('wt_entries').upsert(
+        {user_id:uid,date:k,weight:e.weight,gym:e.gym,cardio:e.cardio,deficit:e.deficit,updated_at:new Date().toISOString()},
+        {onConflict:'user_id,date'});
+    }
+    return p.then(function(r){
+      if(r.error)throw r.error;
+      if((ver[k]||0)===v){delete dirty[k];saveCache();setStatus('Saved')}
+    }).catch(function(){
+      setStatus(navigator.onLine?'Not saved. Will retry.':'Offline. Saves when you reconnect.',true);
+    });
+  }
+
+  function persistGoal(){
+    if(!sb||!uid)return;
+    sb.from('wt_settings').upsert(
+      {user_id:uid,goal:goal,goal_date:goalDate,updated_at:new Date().toISOString()},{onConflict:'user_id'}
+    ).then(function(r){
+      if(r.error)throw r.error;
+      delete dirty.__goal;saveCache();
+    }).catch(function(){setStatus('Goal not saved. Will retry.',true)});
+  }
+
+  function flush(){
+    Object.keys(dirty).forEach(function(k){if(k==='__goal')persistGoal();else persist(k)});
+  }
+
+  function scheduleSave(k){
+    dirty[k]=true;ver[k]=(ver[k]||0)+1;
+    saveCache();
+    setStatus('Saving…');
+    clearTimeout(timers[k]);
+    timers[k]=setTimeout(function(){persist(k)},500);
+  }
+
+  function mutate(k,patch){
+    var e=Object.assign({},getEntry(k),patch);
+    if(isEmpty(e))delete entries[k];else entries[k]=e;
+    clearArmed=false;
+    scheduleSave(k);
+    render(true);
+  }
+
+  function saveGoal(g,d){
+    goal=g;goalDate=g==null?null:d;
+    dirty.__goal=true;saveCache();persistGoal();
+  }
+
+  /* ---------- sign-in ---------- */
+  function showAuth(){$('#auth').hidden=false;$('#setup').hidden=true}
+  function onSession(s){
+    uid=s.user.id;userEmail=s.user.email||'';
+    $('#auth').hidden=true;$('#setup').hidden=true;
+    $('#who').textContent=userEmail;
+    loadCache();render(false);
+    flush();
+    pullAll().then(flush);
+  }
+
+  function init(){
+    if(!cfgOk()||!window.supabase){$('#setup').hidden=false;return}
+    sb=window.supabase.createClient(window.WT_CONFIG.SUPABASE_URL,window.WT_CONFIG.SUPABASE_ANON_KEY,
+      {auth:{persistSession:true,autoRefreshToken:true}});
+    sb.auth.getSession().then(function(r){
+      if(r.data&&r.data.session)onSession(r.data.session);else showAuth();
+    });
+    sb.auth.onAuthStateChange(function(ev){
+      if(ev==='SIGNED_OUT'){uid=null;entries={};goal=null;goalDate=null;dirty={};render(false);showAuth()}
+    });
+    window.addEventListener('online',flush);
+    document.addEventListener('visibilitychange',function(){
+      if(!document.hidden&&uid)pullAll().then(flush);
+    });
+  }
+
+  $('#authForm').addEventListener('submit',function(ev){
+    ev.preventDefault();
+    if(!sb)return;
+    var err=$('#authErr'),btn=$('#authBtn');
+    err.textContent='';btn.disabled=true;
+    sb.auth.signInWithPassword({email:$('#email').value.trim(),password:$('#pw').value}).then(function(r){
+      btn.disabled=false;
+      if(r.error){
+        err.textContent=/invalid login/i.test(r.error.message)?'Wrong email or password.':r.error.message;
+        return;
+      }
+      $('#pw').value='';
+      onSession(r.data.session);
+    }).catch(function(){btn.disabled=false;err.textContent='Cannot reach the server. Check your connection.'});
+  });
+  $('#signOut').addEventListener('click',function(){
+    try{localStorage.removeItem(ckey())}catch(x){}
+    if(sb)sb.auth.signOut();
+  });
+
+  /* ---------- render ---------- */
+  function render(keepInput){
+    renderHero();renderWeek();renderLog(keepInput);renderChart();renderGrid();renderHist();
+  }
+
+  function renderHero(){
+    var ws=weightList();
+    if(!ws.length){
+      $('#bigV').textContent='—';$('#latestLabel').textContent='No entries yet';
+      $('#sStart').textContent='—';$('#s7').textContent='—';
+    }else{
+      var last=ws[ws.length-1],first=ws[0];
+      $('#bigV').textContent=fmt(last.w);
+      $('#latestLabel').textContent='Latest · '+dlabel(last.k,true);
+      $('#sStart').textContent=ws.length>1?signed(last.w-first.w):'0.0';
+      var cut=addDays(last.k,-7),ref=null;
+      ws.forEach(function(x){if(x.k<=cut)ref=x});
+      if(!ref&&ws.length>1)ref=first;
+      $('#s7').textContent=(ref&&ref.k!==last.k)?signed(last.w-ref.w):'—';
+    }
+    var gb=$('#goalBtn');
+    if(goal==null){
+      $('#goalL').textContent='Goal';$('#goalN').textContent='Set';$('#goalBar').hidden=true;
+    }else if(!ws.length){
+      $('#goalL').textContent='Goal';$('#goalN').textContent=fmt(goal);$('#goalBar').hidden=true;
+    }else{
+      var cur=ws[ws.length-1].w,st=ws[0].w,rem=cur-goal;
+      var reached=(st>=goal&&cur<=goal)||(st<goal&&cur>=goal);
+      $('#goalL').textContent=reached?'Goal '+fmt(goal):'To goal';
+      $('#goalN').textContent=reached?'Reached':fmt(Math.abs(rem))+' kg';
+      var pct=Math.abs(st-goal)<0.05?100:Math.max(0,Math.min(100,(st-cur)/(st-goal)*100));
+      $('#goalFill').style.width=pct.toFixed(0)+'%';
+      $('#goalBar [role=progressbar]').setAttribute('aria-valuenow',pct.toFixed(0));
+      $('#capStart').textContent='Start '+fmt(st);$('#capGoal').textContent='Goal '+fmt(goal);
+      $('#goalBar').hidden=false;
+    }
+    renderPlan(ws);
+  }
+
+  function renderPlan(ws){
+    var p=$('#goalPlan');
+    if(goal==null||!goalDate){p.hidden=true;p.innerHTML='';return}
+    var days=Math.round((fromKey(goalDate)-fromKey(todayKey()))/86400000);
+    var when=fromKey(goalDate).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+    var cur=ws.length?ws[ws.length-1].w:null,st=ws.length?ws[0].w:null;
+    var reached=cur!=null&&((st>=goal&&cur<=goal)||(st<goal&&cur>=goal));
+    var left,side;
+    if(reached){
+      left='<span class="days" style="font-size:20px">Goal reached</span>';
+      side='Target date<b>'+when+'</b>';
+    }else if(days<0){
+      var o=-days;
+      left='<span class="days">'+o+'<small>'+(o===1?'day overdue':'days overdue')+'</small></span>';
+      side='Target was<b>'+when+'</b>';
+    }else{
+      left=days===0?'<span class="days" style="font-size:20px">Last day</span>'
+        :'<span class="days">'+days+'<small>'+(days===1?'day left':'days left')+'</small></span>';
+      if(cur!=null){
+        var rem=Math.abs(cur-goal);
+        side=(days>=7?'<b>'+(rem/(days/7)).toFixed(2).replace(/0$/,'')+' kg/week</b>needed to hit it by '+when
+                     :'<b>'+rem.toFixed(1)+' kg</b>to go by '+when);
+      }else{
+        side='Target date<b>'+when+'</b>';
+      }
+    }
+    p.innerHTML=left+'<span class="side">'+side+'</span>';
+    p.hidden=false;
+  }
+
+  function renderWeek(){
+    var t=todayKey(),h='';
+    for(var i=6;i>=0;i--){
+      var k=addDays(t,-i),d=fromKey(k);
+      var has=entries[k]&&!isEmpty(entries[k]);
+      h+='<button type="button" class="day'+(has?' has':'')+(k===t?' today':'')+'" data-k="'+k+'" aria-pressed="'+(k===sel)+'" aria-label="'+dlabel(k,true)+(has?', logged':'')+'">'
+        +'<span class="w">'+d.toLocaleDateString('en-IN',{weekday:'short'}).slice(0,3)+'</span>'
+        +'<span class="d">'+d.getDate()+'</span><span class="dot"></span></button>';
+    }
+    $('#week').innerHTML=h;
+  }
+
+  function renderLog(keepInput){
+    var e=getEntry(sel),t=todayKey();
+    $('#dayTitle').textContent=(sel===t?'Today · ':'')+dlabel(sel,true);
+    var w=$('#w');
+    if(!(keepInput&&document.activeElement===w)){
+      w.value=e.weight==null?'':fmt(e.weight);
+    }
+    var prev=prevWeight(sel);
+    w.placeholder=prev!=null?fmt(prev):'0.0';
+    document.querySelectorAll('.habit').forEach(function(row){
+      var h=row.getAttribute('data-h'),val=e[h];
+      row.querySelectorAll('button').forEach(function(b){
+        var on=(b.getAttribute('data-v')==='1'&&val===true)||(b.getAttribute('data-v')==='0'&&val===false);
+        b.setAttribute('aria-pressed',on?'true':'false');
+      });
+    });
+    var c=$('#clearBtn');c.hidden=isEmpty(entries[sel]);
+    c.textContent=clearArmed?'Tap again to clear':'Clear this day';
+  }
+
+  function prevWeight(k){
+    var best=null;
+    weightList().forEach(function(x){if(x.k<k)best=x.w});
+    if(best==null){var ws=weightList();if(ws.length)best=ws[ws.length-1].w}
+    return best;
+  }
+
+  function niceNum(v){return v%1===0?String(v):v.toFixed(1)}
+
+  function renderChart(){
+    var all=weightList(),wrap=$('#chartWrap');
+    var t=todayKey(),from=range?addDays(t,-(range-1)):'0000-00-00';
+    var pts=all.filter(function(x){return x.k>=from});
+    if(pts.length<2){
+      wrap.innerHTML='<div class="empty">Log your weight on two different mornings to see the trend.</div>';return;
+    }
+    // 7-day trailing average, computed on all data so the start of the range is not skewed
+    var avgAll=all.map(function(x){
+      var lo=addDays(x.k,-6),s=0,n=0;
+      all.forEach(function(y){if(y.k>=lo&&y.k<=x.k){s+=y.w;n++}});
+      return {k:x.k,w:s/n};
+    });
+    var avg=avgAll.filter(function(x){return x.k>=from});
+    var W=340,H=170,pl=36,pr=10,pt=10,pb=22;
+    var dmin=fromKey(pts[0].k).getTime(),dmax=fromKey(pts[pts.length-1].k).getTime();
+    var span=Math.max(dmax-dmin,86400000);
+    var vals=pts.map(function(p){return p.w}).concat(avg.map(function(p){return p.w}));
+    var lo=Math.min.apply(null,vals),hi=Math.max.apply(null,vals);
+    var showGoal=goal!=null&&goal>lo-6&&goal<hi+6;
+    if(showGoal){lo=Math.min(lo,goal);hi=Math.max(hi,goal)}
+    lo=Math.floor(lo-0.5);hi=Math.ceil(hi+0.5);
+    if(hi-lo<2){hi=lo+2}
+    function X(k){return pl+(fromKey(k).getTime()-dmin)/span*(W-pl-pr)}
+    function Y(v){return pt+(hi-v)/(hi-lo)*(H-pt-pb)}
+    var mid=(lo+hi)/2,s='';
+    [lo,mid,hi].forEach(function(v){
+      s+='<line class="grid" x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(v).toFixed(1)+'" y2="'+Y(v).toFixed(1)+'"/>'
+        +'<text x="'+(pl-6)+'" y="'+(Y(v)+3).toFixed(1)+'" text-anchor="end">'+niceNum(v)+'</text>';
+    });
+    if(showGoal){
+      s+='<line class="goal" x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(goal).toFixed(1)+'" y2="'+Y(goal).toFixed(1)+'"/>';
+    }
+    var line=avg.map(function(p,i){return (i?'L':'M')+X(p.k).toFixed(1)+' '+Y(p.w).toFixed(1)}).join(' ');
+    var base=(H-pb).toFixed(1);
+    s+='<path class="area" d="'+line+' L'+X(avg[avg.length-1].k).toFixed(1)+' '+base+' L'+X(avg[0].k).toFixed(1)+' '+base+' Z"/>';
+    pts.forEach(function(p){s+='<circle class="raw" cx="'+X(p.k).toFixed(1)+'" cy="'+Y(p.w).toFixed(1)+'" r="2.5"/>'});
+    s+='<path class="avg" d="'+line+'"/>';
+    var le=avg[avg.length-1];
+    s+='<circle class="end" cx="'+X(le.k).toFixed(1)+'" cy="'+Y(le.w).toFixed(1)+'" r="5"/>';
+    s+='<text x="'+pl+'" y="'+(H-6)+'" text-anchor="start">'+dlabel(pts[0].k)+'</text>'
+      +'<text x="'+(W-pr)+'" y="'+(H-6)+'" text-anchor="end">'+dlabel(pts[pts.length-1].k)+'</text>';
+    wrap.innerHTML='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Weight trend in kilograms from '
+      +dlabel(pts[0].k)+' to '+dlabel(pts[pts.length-1].k)+', latest 7-day average '+fmt(le.w)+'">'+s+'</svg>'
+      +'<div class="legend"><span><i style="background:var(--line-strong)"></i>Daily</span>'
+      +'<span><i style="background:var(--accent)"></i>7-day average</span>'
+      +(showGoal?'<span>Dashed: goal</span>':'')+'</div>';
+  }
+
+  function renderGrid(){
+    var t=todayKey(),days=[];
+    for(var i=6;i>=0;i--)days.push(addDays(t,-i));
+    var h='<span></span>';
+    days.forEach(function(k){h+='<span class="h">'+fromKey(k).toLocaleDateString('en-IN',{weekday:'narrow'})+'</span>'});
+    h+='<span></span>';
+    HK.forEach(function(hk){
+      var c=0;
+      h+='<span class="name">'+NAME[hk]+'</span>';
+      days.forEach(function(k){
+        var v=entries[k]?entries[k][hk]:null;
+        if(v===true)c++;
+        h+='<span class="pip '+(v===true?'yes':v===false?'no':'none')+'" role="img" aria-label="'+NAME[hk]+' '+dlabel(k,true)+': '+(v===true?'yes':v===false?'no':'not logged')+'"></span>';
+      });
+      h+='<span class="cnt">'+c+'/7</span>';
+    });
+    $('#grid7').innerHTML=h;
+    // perfect-day streak: all three habits answered yes
+    function perfect(k){var e=entries[k];return !!e&&HK.every(function(x){return e[x]===true})}
+    var k=t;if(!perfect(k))k=addDays(t,-1);
+    var n=0;while(perfect(k)){n++;k=addDays(k,-1)}
+    $('#streak').textContent=n?('Streak · '+n+(n===1?' day':' days')):'No streak yet';
+  }
+
+  function renderHist(){
+    var keys=Object.keys(entries).filter(function(k){return !isEmpty(entries[k])}).sort().reverse().slice(0,21);
+    if(!keys.length){$('#hist').innerHTML='<div class="empty">Entries you log will appear here.</div>';return}
+    $('#hist').innerHTML=keys.map(function(k){
+      var e=entries[k];
+      return '<button type="button" class="hrow" data-k="'+k+'" aria-label="Edit '+dlabel(k,true)+'">'
+        +'<span class="dt">'+dlabel(k,true)+'</span>'
+        +'<span class="wt">'+(e.weight!=null?fmt(e.weight)+' kg':'—')+'</span>'
+        +'<span class="tags">'+HK.map(function(x){var v=e[x];return '<span class="tag '+(v===true?'yes':v===false?'no':'none')+'" title="'+NAME[x]+'">'+LETTER[x]+'</span>'}).join('')+'</span></button>';
+    }).join('');
+  }
+
+  /* ---------- events ---------- */
+  function parseW(str){
+    var v=parseFloat(String(str).replace(',','.'));
+    return (isNaN(v)||v<20||v>300)?null:Math.round(v*10)/10;
+  }
+
+  $('#w').addEventListener('input',function(){
+    var raw=this.value.trim();
+    if(raw===''){mutate(sel,{weight:null});return}
+    var v=parseW(raw);
+    if(v==null){setStatus('Enter a weight between 20 and 300 kg.',true);return}
+    mutate(sel,{weight:v});
+  });
+  $('#w').addEventListener('blur',function(){renderLog(false)});
+  $('#w').addEventListener('keydown',function(e){if(e.key==='Enter')this.blur()});
+
+  function step(d){
+    var cur=getEntry(sel).weight;
+    if(cur==null)cur=prevWeight(sel);
+    if(cur==null)cur=70;
+    mutate(sel,{weight:Math.round((cur+d)*10)/10});
+  }
+  $('#wMinus').addEventListener('click',function(){step(-0.1)});
+  $('#wPlus').addEventListener('click',function(){step(0.1)});
+
+  document.querySelectorAll('.habit').forEach(function(row){
+    row.addEventListener('click',function(ev){
+      var b=ev.target.closest('button');if(!b)return;
+      var h=row.getAttribute('data-h'),want=b.getAttribute('data-v')==='1';
+      var cur=getEntry(sel)[h];
+      var patch={};patch[h]=(cur===want)?null:want;
+      mutate(sel,patch);
+    });
+  });
+
+  $('#week').addEventListener('click',function(ev){
+    var b=ev.target.closest('.day');if(!b)return;
+    sel=b.getAttribute('data-k');clearArmed=false;setStatus('');render(false);
+  });
+  $('#hist').addEventListener('click',function(ev){
+    var b=ev.target.closest('.hrow');if(!b)return;
+    sel=b.getAttribute('data-k');clearArmed=false;setStatus('');render(false);
+    window.scrollTo({top:0,behavior:'smooth'});
+  });
+  $('#chips').addEventListener('click',function(ev){
+    var b=ev.target.closest('.chip');if(!b)return;
+    range=parseInt(b.getAttribute('data-r'),10);
+    document.querySelectorAll('.chip').forEach(function(c){c.setAttribute('aria-pressed',c===b?'true':'false')});
+    renderChart();
+  });
+  $('#clearBtn').addEventListener('click',function(){
+    if(!clearArmed){clearArmed=true;renderLog(false);return}
+    clearArmed=false;
+    delete entries[sel];scheduleSave(sel);render(false);
+  });
+
+  function openSheet(){
+    $('#goalIn').value=goal==null?'':fmt(goal);
+    $('#goalDate').value=goalDate||'';
+    $('#goalDate').min=todayKey();
+    $('#goalErr').textContent='';
+    $('#sheet').hidden=false;setTimeout(function(){$('#goalIn').focus()},50);
+  }
+  function closeSheet(){$('#sheet').hidden=true}
+  $('#goalBtn').addEventListener('click',openSheet);
+  $('#goalCancel').addEventListener('click',closeSheet);
+  $('#sheet').addEventListener('click',function(ev){if(ev.target===this)closeSheet()});
+  $('#goalSave').addEventListener('click',function(){
+    var raw=$('#goalIn').value.trim(),dv=$('#goalDate').value,err=$('#goalErr');
+    err.textContent='';
+    if(raw===''){saveGoal(null,null);closeSheet();render(false);return}
+    var v=parseW(raw);
+    if(v==null){err.textContent='Enter a goal weight between 20 and 300 kg.';$('#goalIn').focus();return}
+    if(dv&&dv<todayKey()){err.textContent='Pick a target date from today onward.';return}
+    saveGoal(v,dv||null);closeSheet();render(false);
+  });
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!$('#sheet').hidden)closeSheet()});
+
+  render(false);
+  init();
+  if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})})}
+})();
+</script>
+</body>
+</html>
