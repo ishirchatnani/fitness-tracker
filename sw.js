@@ -1,5 +1,5 @@
 // Network first, cache fallback: updates show up right away, and the app still opens offline.
-const CACHE = 'wt-shell-v1';
+const CACHE = 'wt-shell-v2';
 const SHELL = ['./', 'index.html', 'config.js', 'manifest.webmanifest', 'vendor/supabase.js', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -18,7 +18,7 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' }) // always revalidate, so GitHub Pages' 10-minute cache never serves stale files
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy));
